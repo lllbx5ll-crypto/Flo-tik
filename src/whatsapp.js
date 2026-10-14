@@ -189,6 +189,19 @@ function commandError(e){
   return `❌ تعذر تنفيذ الأمر: ${String(e?.message||e||'خطأ').slice(0,240)}`;
 }
 function targetFromMessage(m,args){const ctx=m.message?.extendedTextMessage?.contextInfo;const list=ctx?.mentionedJid||[];if(list[0])return jidNormalizedUser(list[0]);if(ctx?.participant)return jidNormalizedUser(ctx.participant);const num=args.find(a=>/^\d{7,15}$/.test(a.replace(/\D/g,'')));return num?`${num.replace(/\D/g,'')}@s.whatsapp.net`:null}
+async function reactToIncoming(jid,m,emoji){
+  if(!m?.key?.id || !jid) return;
+  try{await sock.sendMessage(jid,{react:{text:emoji,key:m.key}})}catch(e){logger.debug({error:String(e)},'Reaction not supported');}
+}
+function commandReaction(text,prefix){
+  const value=String(text||'').trim();
+  if(isMenuTrigger(value)||isAllCommandsTrigger(value)||isFullCommandsTrigger(value))return '🔥';
+  const parsed=parseCommand(value,prefix);
+  if(!parsed)return '';
+  if(['menu','help','allcommands','fullcommands'].includes(parsed.command))return '🔥';
+  if(['music','youtube','apk','playstore','websearch','download'].includes(parsed.command))return '🔎';
+  return '';
+}
 async function reply(jid,text,opts={}){const result=await sock.sendMessage(jid,{text:String(text)},opts);try{const id=result?.key?.id;if(id)contextFor().outgoingIds.add(id)}catch{}return result}
 
 function menuRows(lang){
@@ -561,7 +574,7 @@ async function handlePendingMediaSelection(m,jid,text,settings){
     clearPendingMedia(jid);
     await reply(jid,`⏬ جارٍ تحميل: ${item.title}\n⏳ انتظر حتى يكتمل...`,{quoted:m});
     const result=await downloadWithYtDlp(item.url,p.kind==='music'?'audio':'video');
-    if(result.missing){await reply(jid,'⚠️ أداة yt-dlp غير مثبتة. ثبّتها مرة واحدة في Termux:\n\npkg install python ffmpeg -y\npip install -U yt-dlp',{quoted:m});return true;}
+    if(result.missing){await reply(jid,'⚠️ خدمة التحميل غير مجهزة على الاستضافة؛ راجع إعدادات نشر السيرفر.',{quoted:m});return true;}
     if(!result.ok){await reply(jid,`❌ فشل التحميل:\n${result.error}`,{quoted:m});return true;}
     try{
       const buffer=fs.readFileSync(result.file);
@@ -591,7 +604,7 @@ async function handlePendingMediaSelection(m,jid,text,settings){
     clearPendingMedia(jid);
     await reply(jid,`⏬ جارٍ تحميل ${mode==='audio'?'الصوت':'الفيديو'}...`,{quoted:m});
     const result=await downloadWithYtDlp(p.url,mode);
-    if(result.missing){await reply(jid,'⚠️ أداة yt-dlp غير مثبتة. ثبّتها في Termux:\n\npkg install python ffmpeg -y\npip install -U yt-dlp',{quoted:m});return true;}
+    if(result.missing){await reply(jid,'⚠️ خدمة التحميل غير مجهزة على الاستضافة؛ راجع إعدادات نشر السيرفر.',{quoted:m});return true;}
     if(!result.ok){await reply(jid,`❌ فشل التحميل:\n${result.error}`,{quoted:m});return true;}
     try{
       const buffer=fs.readFileSync(result.file);
@@ -863,7 +876,7 @@ export async function startBot(userId){
             if(ownChat){
               const liveSettings=getSettings();
               if(isAllCommandsTrigger(text)||isMenuTrigger(text)){await sendMenu(m.key.remoteJid||selfJid,liveSettings.language,liveSettings.prefix,m);continue;}
-              if(isFullCommandsTrigger(text)){await sendCommandCatalog(m.key.remoteJid||selfJid,liveSettings,m);continue;}
+              if(isFullCommandsTrigger(text)){await reactToIncoming(jid,m,'🔥');await sendCommandCatalog(m.key.remoteJid||selfJid,liveSettings,m);continue;}
               if(await handlePendingMediaSelection(m,m.key.remoteJid||selfJid,text,liveSettings))continue;
               if(await handleMenuNumber(m,m.key.remoteJid||selfJid,text,liveSettings))continue;
             }
@@ -899,12 +912,14 @@ export async function startBot(userId){
             }
             if(!senderAdmin&&gc.antibadword&&(settings.badwords||[]).some(w=>w&&text.toLowerCase().includes(w.toLowerCase()))){if(isBotAdmin)await thisSock.sendMessage(jid,{delete:m.key}).catch(()=>{});continue}
           }
-          if(isAllCommandsTrigger(text)){await sendMenu(jid,settings.language,settings.prefix,m);continue;}
-          if(isFullCommandsTrigger(text)){await sendCommandCatalog(jid,settings,m);continue;}
-          if(isMenuTrigger(text)){await sendMenu(jid,settings.language,settings.prefix,m);continue;}
+          if(isAllCommandsTrigger(text)){await reactToIncoming(jid,m,'🔥');await sendMenu(jid,settings.language,settings.prefix,m);continue;}
+          if(isFullCommandsTrigger(text)){await reactToIncoming(jid,m,'🔥');await sendCommandCatalog(jid,settings,m);continue;}
+          if(isMenuTrigger(text)){await reactToIncoming(jid,m,'🔥');await sendMenu(jid,settings.language,settings.prefix,m);continue;}
           if(await handlePendingMediaSelection(m,jid,text,settings))continue;
           if(await handleMenuNumber(m,jid,text,settings))continue;
-          if(await handleCommand(m,jid,sender,text,settings))continue;
+          const reaction=commandReaction(text,settings.prefix);
+          if(reaction)await reactToIncoming(jid,m,reaction);
+          if(await handleCommand(m,jid,sender,text,settings)){if(reaction==='🔎')await reactToIncoming(jid,m,'✅');continue;}
           await maybeAI(m,jid,sender,text,settings);
         }catch(err){emit({type:'error',message:String(err?.message||err)})}
       }
