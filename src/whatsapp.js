@@ -240,7 +240,7 @@ async function sendQuickButtons(jid,rows,title,quoted){
     header:'',title:String(r.title).slice(0,24),description:'اختر هذا القسم',id:r.id
   }))}];
   try{
-    const content={viewOnceMessage:{message:{interactiveMessage:proto.Message.InteractiveMessage.create({
+    const content={viewOnceMessage:{message:{messageContextInfo:{deviceListMetadata:{},deviceListMetadataVersion:2},interactiveMessage:proto.Message.InteractiveMessage.create({
       body:proto.Message.InteractiveMessage.Body.create({text:title||'📋 اختر القسم'}),
       footer:proto.Message.InteractiveMessage.Footer.create({text:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』'}),
       header:proto.Message.InteractiveMessage.Header.create({title:'FLOWTECH',hasMediaAttachment:false}),
@@ -250,7 +250,11 @@ async function sendQuickButtons(jid,rows,title,quoted){
       })
     })}}};
     const msg=generateWAMessageFromContent(jid,content,{userJid:sock.user?.id,quoted});
-    await sock.relayMessage(jid,msg.message,{messageId:msg.key.id});
+    await sock.relayMessage(jid,msg.message,{messageId:msg.key.id,
+      additionalNodes:[
+        {tag:'biz',attrs:{},content:[{tag:'interactive',attrs:{type:'native_flow',v:'1'},content:[{tag:'native_flow',attrs:{v:'9',name:'mixed'},content:undefined}]}]},
+        ...(!jid.endsWith('@g.us')?[{tag:'bot',attrs:{biz_bot:'1'}}]:[])
+      ]});
     return true;
   }catch(e){
     emit({type:'menu_button_error',message:e?.message||String(e)});
@@ -264,7 +268,7 @@ function menuButtonRows(lang){
 }
 async function sendMenu(jid,lang,prefix,quoted){
   const ar=lang==='ar';
-  const imagePath='./public/assets/flowtech-banner.png';
+  const imagePath=path.resolve(import.meta.dirname||path.dirname(new URL(import.meta.url).pathname),'../public/assets/flowtech-banner.png');
   const caption=`╭━〔 FLOWTECH • ${ar?'القائمة الرئيسية':'MAIN MENU'} 〕━╮\n\n`+
     `${ar?'✨ اختر القسم بإرسال رقم واحد فقط:':'✨ Send one number to open a category:'}\n\n`+
     `1️⃣ 👑 ${ar?'المالك والمجموعات':'Owner & Groups'}\n`+
@@ -343,7 +347,7 @@ async function handleInteractive(m,jid,settings){
   if(category[id]){
     const [title,...items]=category[id];
     const body=`╭━━〔 FLOWTECH • ${title} 〕━━╮\n\n${items.map((line,i)=>`${String(i+1).padStart(2,'0')} ${line}`).join('\n')}\n\n╰━━━━━━━━━━━━━━━━━━╯`;
-    const imagePath='./public/assets/flowtech-banner.png';
+    const imagePath=path.resolve(import.meta.dirname||path.dirname(new URL(import.meta.url).pathname),'../public/assets/flowtech-banner.png');
     if(fs.existsSync(imagePath)){
       try{await sock.sendMessage(jid,{image:fs.readFileSync(imagePath),caption:body},{quoted:m});}
       catch{await reply(jid,body,{quoted:m});}
