@@ -915,9 +915,24 @@ export async function startBot(userId){
       }
     }));
     newSock.ev.on('group-participants.update',async(update)=>runAs(userId,async()=>{
-      const {id,participants,action}=update;const settings=getSettings();if(action!=='add')return;const gc=groupConfig(settings,id);if(!gc.welcome)return;
-      const text=settings.language==='ar'?'👋 أهلاً بك في المجموعة!\nمرحبًا بك مع FlowTech.':settings.language==='fr'?'👋 Bienvenue dans le groupe avec FlowTech.':'👋 Welcome to the group with FlowTech.';
-      for(const p of participants)await reply(id,`${text}\n@${p.split('@')[0]}`,{mentions:[p]}).catch(()=>{});
+      try{
+        const {id,participants=[],action}=update;
+        if(action!=='add'||!id||!Array.isArray(participants)||!participants.length)return;
+        const settings=getSettings();const gc=groupConfig(settings,id);
+        if(!gc.welcome)return;
+        let groupName='المجموعة';
+        try{groupName=(await newSock.groupMetadata(id))?.subject||groupName;}catch(e){logger.warn({err:String(e)},'welcome metadata unavailable');}
+        for(const participant of participants){
+          const p=typeof participant==='string'?participant:(participant?.id||participant?.jid||participant?.phoneNumber||participant?.lid);
+          if(!p)continue;
+          const jid=String(p);
+          const number=jid.split('@')[0].split(':')[0];
+          const template=gc.welcomeText||'👋 أهلاً {user} في {group}!';
+          const message=template.replace(/\{user\}/gi,`@${number}`).replace(/\{group\}/gi,groupName);
+          try{await newSock.sendMessage(id,{text:`👋 *مرحبًا بالعضو الجديد*\n\n${message}\n\n『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』`,mentions:[jid]});}
+          catch(e){logger.error({err:String(e),group:id},'welcome send failed');emit({type:'error',message:`Welcome failed: ${String(e?.message||e)}`});}
+        }
+      }catch(e){logger.error({err:String(e)},'welcome event failed');}
     }));
     return newSock;
   });
