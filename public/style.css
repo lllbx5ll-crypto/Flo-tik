@@ -101,3 +101,14 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:rgba(49,190,25
 .qr-box img {max-width:100%;height:auto;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
 @media(max-width:600px){.pair-code{letter-spacing:.08em}.pair-code-wrap{padding:14px}}
 @media(prefers-reduced-motion:reduce){.pair-code-wrap:before{animation:none}#connect .panel,.qr-card{transition:none}}
+
+/* FlowTech premium refresh: presentation only; pairing logic unchanged. */
+:root{--ft-gold:#e6bd77;--ft-glass:rgba(12,29,49,.82)}
+body{font-family: 'Tajawal','Cairo',system-ui,-apple-system,sans-serif;letter-spacing:.05px}
+.panel,.card,.auth-card,.about-card,.connect-card{border-radius:24px!important;background:linear-gradient(150deg,rgba(20,43,65,.93),rgba(5,17,31,.96))!important;box-shadow:0 16px 48px rgba(0,0,0,.24),inset 0 1px rgba(255,255,255,.055);transition:transform .2s ease,box-shadow .2s ease}
+.card:hover,.about-card:hover{transform:translateY(-3px);box-shadow:0 22px 54px rgba(0,0,0,.3)}
+button{transition:filter .2s ease,transform .2s ease}button:hover{filter:brightness(1.12)}button:active{transform:scale(.98)}
+.hero-v2{border-radius:30px!important;box-shadow:0 20px 65px rgba(0,0,0,.25)}
+.pair-code{font-variant-numeric:tabular-nums;letter-spacing:.16em;text-shadow:0 0 24px rgba(42,179,255,.3)}
+input:focus-visible,button:focus-visible{outline:2px solid #77cfff;outline-offset:3px}
+@media(max-width:640px){.panel,.card,.connect-card{border-radius:19px!important}.hero-v2{border-radius:22px!important}}
