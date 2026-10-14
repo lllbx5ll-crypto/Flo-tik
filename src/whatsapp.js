@@ -234,16 +234,23 @@ function quickButtonPayload(rows){
   }));
 }
 async function sendQuickButtons(jid,rows,title,quoted){
-  // Use WhatsApp's native list-message envelope rather than viewOnce/nativeFlow.
-  // Clients may still suppress interactive UI; the numbered menu remains available.
-  const sections=[{title:'أقسام فلو تيك',rows:rows.map((r,i)=>({
-    title:r.title.slice(0,24),rowId:r.id,description:'اختر هذا القسم'
+  // Baileys 7: construct a native-flow message, not a legacy list payload.
+  // WhatsApp can still choose not to display native controls on some clients.
+  const sections=[{title:'أقسام فلو تيك',rows:rows.map(r=>({
+    header:'',title:String(r.title).slice(0,24),description:'اختر هذا القسم',id:r.id
   }))}];
   try{
-    await sock.sendMessage(jid,{
-      text:title||'اختر القسم',footer:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』',
-      title:'FLOWTECH',buttonText:'📋 عرض الأقسام',sections
-    },{quoted});
+    const content={viewOnceMessage:{message:{interactiveMessage:proto.Message.InteractiveMessage.create({
+      body:proto.Message.InteractiveMessage.Body.create({text:title||'📋 اختر القسم'}),
+      footer:proto.Message.InteractiveMessage.Footer.create({text:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』'}),
+      header:proto.Message.InteractiveMessage.Header.create({title:'FLOWTECH',hasMediaAttachment:false}),
+      nativeFlowMessage:proto.Message.InteractiveMessage.NativeFlowMessage.create({
+        buttons:[{name:'single_select',buttonParamsJson:JSON.stringify({title:'📋 عرض الأقسام',sections})}],
+        messageParamsJson:'{}'
+      })
+    })}}};
+    const msg=generateWAMessageFromContent(jid,content,{userJid:sock.user?.id,quoted});
+    await sock.relayMessage(jid,msg.message,{messageId:msg.key.id});
     return true;
   }catch(e){
     emit({type:'menu_button_error',message:e?.message||String(e)});
@@ -289,7 +296,7 @@ async function sendMenu(jid,lang,prefix,quoted){
   // One real selectable list; numbered text remains a fallback for unsupported clients.
   try{
     const rows=menuRows(lang).map((r,i)=>({id:r.id,title:`${i+1}️⃣ ${r.title}`}));
-    await sendQuickButtons(jid,rows,'📋 اضغط لفتح الأقسام التفاعلية:',quoted);
+    await sendQuickButtons(jid,rows,'📋 اختر قسمًا، أو أرسل رقمه من القائمة المصورة:',quoted);
   }catch(e){emit({type:'menu_buttons_error',message:e?.message||String(e)});}
   return true;
 }
