@@ -89,7 +89,7 @@ function interactiveId(m){
       let value=raw;
       if(typeof Buffer!=='undefined' && Buffer.isBuffer(value))value=value.toString('utf8');
       else if(value instanceof Uint8Array)value=new TextDecoder().decode(value);
-      const p=typeof value==='string'?JSON.parse(value):value;
+      const p=typeof value==='string'?(value.trim().startsWith('{')?JSON.parse(value):{id:value}):value;
       const id=p?.id||p?.selected_row_id||p?.button_id||p?.selectedId||p?.selected_button_id||p?.buttonReply?.id||p?.display_text;
       if(id)return String(id);
     }catch{}
@@ -234,23 +234,26 @@ function quickButtonPayload(rows){
   }));
 }
 async function sendQuickButtons(jid,rows,title,quoted){
-  const buttons=quickButtonPayload(rows);
   const body=title||'اختر القسم الذي تريده:';
-  const candidates=[
-    {interactiveMessage:{header:{title:'FlowTech',hasMediaAttachment:false},body:{text:body},footer:{text:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』'},nativeFlowMessage:{buttons,messageParamsJson:''}}},
-    {interactiveMessage:{body:{text:body},footer:{text:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』'},nativeFlowMessage:{buttons,messageParamsJson:''}}}
-  ];
-  let lastError=null;
-  for(const content of candidates){
-    try{await sock.sendMessage(jid,content,{quoted});return true;}catch(e){lastError=e;}
-  }
+  // A single-select native flow supports nine categories without exceeding quick-reply limits.
+  const button={name:'single_select',buttonParamsJson:JSON.stringify({
+    title:'📋 افتح قائمة الأقسام',sections:[{title:'أقسام فلو تيك',rows:rows.map(r=>({header:'FLOWTECH',title:r.title,description:'اضغط لفتح القسم',id:r.id}))}]
+  })};
   try{
-    const generated=generateWAMessageFromContent(jid,{viewOnceMessage:{message:{messageContextInfo:{deviceListMetadata:{},deviceListMetadataVersion:2},interactiveMessage:proto.Message.InteractiveMessage.fromObject({body:{text:body},footer:{text:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』'},nativeFlowMessage:{buttons,messageParamsJson:''}})}}},{quoted});
+    const interactive=proto.Message.InteractiveMessage.fromObject({
+      header:{title:'FLOWTECH',hasMediaAttachment:false},body:{text:body},
+      footer:{text:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』'},
+      nativeFlowMessage:{buttons:[button],messageParamsJson:''}
+    });
+    const generated=generateWAMessageFromContent(jid,{viewOnceMessage:{message:{
+      messageContextInfo:{deviceListMetadata:{},deviceListMetadataVersion:2},interactiveMessage:interactive
+    }}},{quoted});
     await sock.relayMessage(jid,generated.message,{messageId:generated.key.id});
     return true;
-  }catch(e){lastError=e;}
-  emit({type:'menu_button_error',message:lastError?.message||String(lastError||'تعذر إرسال الأزرار')});
-  return false;
+  }catch(e){
+    emit({type:'menu_button_error',message:e?.message||String(e)});
+    return false;
+  }
 }
 function menuButtonRows(lang){
   const ar=lang==='ar';
@@ -287,12 +290,10 @@ async function sendMenu(jid,lang,prefix,quoted){
     await reply(jid,caption,{quoted}).catch(()=>{});
   }
 
-  // Optional native buttons. They are only an enhancement; they never replace the numbered menu.
+  // One real selectable list; numbered text remains a fallback for unsupported clients.
   try{
     const rows=menuRows(lang).map((r,i)=>({id:r.id,title:`${i+1}️⃣ ${r.title}`}));
-    await sendQuickButtons(jid,rows.slice(0,3),'📋 الأقسام 1–3:',quoted);
-    await sendQuickButtons(jid,rows.slice(3,6),'📋 الأقسام 4–6:',quoted);
-    await sendQuickButtons(jid,rows.slice(6,9),'📋 الأقسام 7–9:',quoted);
+    await sendQuickButtons(jid,rows,'📋 اضغط لفتح الأقسام التفاعلية:',quoted);
   }catch(e){emit({type:'menu_buttons_error',message:e?.message||String(e)});}
   return true;
 }
@@ -554,11 +555,12 @@ async function downloadWithYtDlp(url,mode='audio'){
   fs.mkdirSync(dir,{recursive:true});
   const stamp=Date.now();
   const template=path.join(dir,`${stamp}-%(title).80s.%(ext)s`);
-  const args=['--no-playlist','--restrict-filenames','--no-warnings','-o',template];
+  const args=['--no-playlist','--restrict-filenames','--no-warnings','--extractor-args','youtube:player_client=android,web','--retries','3','--fragment-retries','3','-o',template];
+  if(process.env.YTDLP_COOKIES_FILE && fs.existsSync(process.env.YTDLP_COOKIES_FILE))args.push('--cookies',process.env.YTDLP_COOKIES_FILE);
   if(mode==='audio')args.push('-x','--audio-format','mp3','--audio-quality','128K');
   else args.push('-f','bv*+ba/b','--merge-output-format','mp4');
   args.push(url);
-  try{await runProcess('yt-dlp',args,{timeout:240000});}catch(e){return {ok:false,error:e.message};}
+  try{await runProcess('yt-dlp',args,{timeout:240000});}catch(e){return {ok:false,error:/sign in to confirm|not a bot|cookies/i.test(e.message)?'يوتيوب طلب التحقق من الجلسة. يحتاج السيرفر إلى ملف Cookies صالح عبر YTDLP_COOKIES_FILE، ولا يمكن ضمان التحميل من كل فيديو.':e.message};}
   const files=fs.readdirSync(dir).filter(name=>name.startsWith(`${stamp}-`)).map(name=>path.join(dir,name));
   if(!files.length)return {ok:false,error:'لم يتم إنشاء الملف بعد التحميل.'};
   const file=files.sort((a,b)=>fs.statSync(b).size-fs.statSync(a).size)[0];
