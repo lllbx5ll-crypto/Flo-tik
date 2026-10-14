@@ -1,0 +1,29 @@
+{
+  "name": "FlowTech WhatsApp Bot",
+  "description": "FlowTech WhatsApp bot and dashboard",
+  "keywords": ["whatsapp", "bot", "flowtech"],
+  "website": "https://www.heroku.com/",
+  "success_url": "/",
+  "env": {
+    "DASHBOARD_SECRET": {
+      "description": "Long random secret used to sign dashboard sessions",
+      "required": true,
+      "generator": "secret"
+    },
+    "MONGODB_URI": {
+      "description": "MongoDB Atlas connection string; keep it secret",
+      "required": false
+    },
+    "MONGODB_DB_NAME": {
+      "description": "MongoDB database name",
+      "value": "flowtech",
+      "required": false
+    }
+  },
+  "formation": {
+    "web": { "quantity": 1, "size": "basic" }
+  },
+  "buildpacks": [
+    { "url": "heroku/nodejs" }
+  ]
+}
