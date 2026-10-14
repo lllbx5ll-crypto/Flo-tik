@@ -1,6 +1,6 @@
 import { createCommandHandlers } from '../commands/handlers.js';
 import { sendCommandCatalog as renderCommandCatalog } from '../commands/catalog-renderer.js';
-import makeWASocket, { Browsers, DisconnectReason, useMultiFileAuthState, jidNormalizedUser, isJidGroup, fetchLatestWaWebVersion, downloadMediaMessage, generateWAMessageContent, generateWAMessageFromContent, proto } from '@whiskeysockets/baileys';
+import makeWASocket, { Browsers, DisconnectReason, useMultiFileAuthState, jidNormalizedUser, isJidGroup, fetchLatestWaWebVersion, downloadMediaMessage, generateWAMessageContent, generateWAMessageFromContent, prepareWAMessageMedia, proto } from '@whiskeysockets/baileys';
 import P from 'pino';
 import QRCode from 'qrcode';
 import fs from 'node:fs';
@@ -233,17 +233,26 @@ function quickButtonPayload(rows){
     buttonParamsJson:JSON.stringify({display_text:r.title,id:r.id})
   }));
 }
-async function sendQuickButtons(jid,rows,title,quoted){
-  // Baileys 7: construct a native-flow message, not a legacy list payload.
-  // WhatsApp can still choose not to display native controls on some clients.
-  const sections=[{title:'أقسام فلو تيك',rows:rows.map(r=>({
-    header:'',title:String(r.title).slice(0,24),description:'اختر هذا القسم',id:r.id
+async function sendQuickButtons(jid,rows,title,quoted,{withBanner=false,subtitle=''}={}){
+  // Single native-flow message: picture + welcome + selectable sections.
+  // Keep titles short to avoid truncation in the WhatsApp picker.
+  const sections=[{title:'📂 أقسام فلو تيك',rows:rows.map(r=>({
+    header:'',title:String(r.title).slice(0,24),description:String(r.description||'اضغط لفتح القسم').slice(0,64),id:r.id
   }))}];
   try{
+    const bannerPath=path.resolve(import.meta.dirname||path.dirname(new URL(import.meta.url).pathname),'../public/assets/flowtech-banner.png');
+    let header;
+    if(withBanner && fs.existsSync(bannerPath)){
+      try{
+        const media=await prepareWAMessageMedia({image:fs.readFileSync(bannerPath)},{upload:sock.waUploadToServer});
+        header=proto.Message.InteractiveMessage.Header.create({title:'FLOWTECH',subtitle,hasMediaAttachment:true,imageMessage:media.imageMessage});
+      }catch(e){emit({type:'menu_banner_error',message:String(e)});}
+    }
+    if(!header)header=proto.Message.InteractiveMessage.Header.create({title:'FLOWTECH',subtitle,hasMediaAttachment:false});
     const content={viewOnceMessage:{message:{messageContextInfo:{deviceListMetadata:{},deviceListMetadataVersion:2},interactiveMessage:proto.Message.InteractiveMessage.create({
       body:proto.Message.InteractiveMessage.Body.create({text:title||'📋 اختر القسم'}),
       footer:proto.Message.InteractiveMessage.Footer.create({text:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』'}),
-      header:proto.Message.InteractiveMessage.Header.create({title:'FLOWTECH',hasMediaAttachment:false}),
+      header,
       nativeFlowMessage:proto.Message.InteractiveMessage.NativeFlowMessage.create({
         buttons:[{name:'single_select',buttonParamsJson:JSON.stringify({title:'📋 عرض الأقسام',sections})}],
         messageParamsJson:'{}'
@@ -256,53 +265,30 @@ async function sendQuickButtons(jid,rows,title,quoted){
         ...(!jid.endsWith('@g.us')?[{tag:'bot',attrs:{biz_bot:'1'}}]:[])
       ]});
     return true;
-  }catch(e){
-    emit({type:'menu_button_error',message:e?.message||String(e)});
-    return false;
-  }
+  }catch(e){emit({type:'menu_button_error',message:e?.message||String(e)});return false;}
 }
-
 function menuButtonRows(lang){
   const ar=lang==='ar';
-  return menuRows(lang).map(r=>({id:r.id,title:`${r.header} ${r.title}`}));
+  const titles=ar?[
+    '👑 المجموعات','🛡️ الحماية','🧰 الأدوات','❤️ الحالات','🧠 الذكاء الاصطناعي',
+    '🎮 الترفيه','🔎 البحث والتحميل','💬 الرسائل','ℹ️ المساعدة'
+  ]:['👑 Groups','🛡️ Security','🧰 Tools','❤️ Status','🧠 AI','🎮 Fun','🔎 Search','💬 Text','ℹ️ Help'];
+  return menuRows(lang).map((r,i)=>({id:r.id,title:`${i+1}. ${titles[i]}`,description:r.description}));
 }
 async function sendMenu(jid,lang,prefix,quoted){
   const ar=lang==='ar';
+  const welcome=ar?
+    '✨ أهلاً بك في بوت فلو تيك!\n\n🤖 مساعدك الذكي لإدارة المجموعات والحماية والبحث والتحميل والترفيه.\n\n📋 اضغط «عرض الأقسام» واختر الخدمة التي تريدها.\n↩️ يمكنك الرجوع للقائمة الرئيسية من أي قسم.':
+    '✨ Welcome to FlowTech!\n\n🤖 Your assistant for groups, security, search, downloads and fun.\n\n📋 Tap “Show sections” to get started.';
+  const ok=await sendQuickButtons(jid,menuButtonRows(lang),welcome,quoted,{withBanner:true,subtitle:'WhatsApp Bot'});
+  if(ok)return true;
+  // If native-flow fails, keep the original image + numbered menu working.
   const imagePath=path.resolve(import.meta.dirname||path.dirname(new URL(import.meta.url).pathname),'../public/assets/flowtech-banner.png');
-  const caption=`╭━〔 FLOWTECH • ${ar?'القائمة الرئيسية':'MAIN MENU'} 〕━╮\n\n`+
-    `${ar?'✨ اختر القسم بإرسال رقم واحد فقط:':'✨ Send one number to open a category:'}\n\n`+
-    `1️⃣ 👑 ${ar?'المالك والمجموعات':'Owner & Groups'}\n`+
-    `2️⃣ 🛡️ ${ar?'الحماية والأمان':'Protection & Security'}\n`+
-    `3️⃣ 🧰 ${ar?'الأدوات والخدمات':'Tools & Services'}\n`+
-    `4️⃣ ❤️ ${ar?'الحالات والتفاعل':'Status & Reactions'}\n`+
-    `5️⃣ 🧠 ${ar?'الذكاء الاصطناعي':'Artificial Intelligence'}\n`+
-    `6️⃣ 🎮 ${ar?'الترفيه والألعاب':'Fun & Games'}\n`+
-    `7️⃣ 🔎 ${ar?'البحث والخدمات':'Search & Services'}\n`+
-    `8️⃣ 💬 ${ar?'الرسائل والنصوص':'Messages & Text'}\n`+
-    `9️⃣ ℹ️ ${ar?'المساعدة ومعلومات البوت':'Help & Bot Info'}\n\n`+
-    `${ar?'📌 مثال: أرسل 6 للترفيه، أو 7 للبحث، أو 9 للمساعدة.':'📌 Example: send 6 for fun, 7 for search, or 9 for help.'}\n`+
-    `╰━━━━━━━━━━━━━━━╯`;
-
-  // V26 reliability is preserved: the text menu always works even when native UI is unavailable.
-  // The wide banner is sent with the menu caption so the root menu is visually clear.
+  const caption=welcome+'\n\n'+menuRows(lang).map((r,i)=>`${i+1}️⃣ ${r.title}`).join('\n')+'\n\n📌 أرسل رقم القسم من 1 إلى 9.';
   if(fs.existsSync(imagePath)){
-    try{
-      const buffer=fs.readFileSync(imagePath);
-      await sock.sendMessage(jid,{image:buffer,caption},{quoted});
-    }catch(e){
-      emit({type:'menu_banner_error',message:e?.message||String(e)});
-      await reply(jid,caption,{quoted}).catch(()=>{});
-    }
-  }else{
-    await reply(jid,caption,{quoted}).catch(()=>{});
+    try{await sock.sendMessage(jid,{image:fs.readFileSync(imagePath),caption},{quoted});return true;}catch(e){emit({type:'menu_banner_error',message:String(e)});}
   }
-
-  // One real selectable list; numbered text remains a fallback for unsupported clients.
-  try{
-    const rows=menuRows(lang).map((r,i)=>({id:r.id,title:`${i+1}️⃣ ${r.title}`}));
-    await sendQuickButtons(jid,rows,'📋 اختر قسمًا، أو أرسل رقمه من القائمة المصورة:',quoted);
-  }catch(e){emit({type:'menu_buttons_error',message:e?.message||String(e)});}
-  return true;
+  await reply(jid,caption,{quoted});return true;
 }
 
 async function handleInteractive(m,jid,settings){
@@ -347,12 +333,8 @@ async function handleInteractive(m,jid,settings){
   if(category[id]){
     const [title,...items]=category[id];
     const body=`╭━━〔 FLOWTECH • ${title} 〕━━╮\n\n${items.map((line,i)=>`${String(i+1).padStart(2,'0')} ${line}`).join('\n')}\n\n╰━━━━━━━━━━━━━━━━━━╯`;
-    const imagePath=path.resolve(import.meta.dirname||path.dirname(new URL(import.meta.url).pathname),'../public/assets/flowtech-banner.png');
-    if(fs.existsSync(imagePath)){
-      try{await sock.sendMessage(jid,{image:fs.readFileSync(imagePath),caption:body},{quoted:m});}
-      catch{await reply(jid,body,{quoted:m});}
-    }else await reply(jid,body,{quoted:m});
-    try{await sendQuickButtons(jid,[{id:'menu_root',title:'↩️ القائمة الرئيسية'}],'↩️ العودة للأقسام:',m)}catch{}
+    const back=await sendQuickButtons(jid,[{id:'menu_root',title:'↩️ القائمة الرئيسية',description:'العودة إلى جميع أقسام فلو تيك'}],body,m,{withBanner:false});
+    if(!back)await reply(jid,body+'\n\n↩️ اكتب «اوامر» للعودة للقائمة الرئيسية.',{quoted:m});
     return true;
   }
   return false;
