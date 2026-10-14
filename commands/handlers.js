@@ -433,7 +433,7 @@ async function handleExtraCommand(command,args,m,jid,sender,settings){
     const q=args.join(' ').trim();
     if(!q){await send(`🎵 الاستخدام: ${settings.prefix}موسيقى اسم الأغنية`);return true;}
     const result=await ytSearch(q);
-    if(result.missing){await send(`⚠️ ميزة البحث والتحميل تحتاج yt-dlp في السيرفر.\n\nTermux:\npkg install python ffmpeg -y\npip install -U yt-dlp\n\nثم أرسل الأمر مرة أخرى.`);return true;}
+    if(result.missing){await send(`⚠️ خدمة الموسيقى غير متاحة على الاستضافة حاليًا. يرجى مراجعة سجل السيرفر وتثبيت متطلبات التحميل عند النشر.`);return true;}
     if(!result.ok||!result.items.length){await send(`❌ لم أجد نتائج للأغنية: ${q}`);return true;}
     setPendingMedia(jid,{kind:'music',items:result.items});
     await send(`╭━━〔 🎵 نتائج الموسيقى 〕━━╮\n\n${result.items.map((x,i)=>`${i+1}️⃣ ${x.title}${x.channel?`\n   👤 ${x.channel}`:''}`).join('\n\n')}\n\n📌 أرسل رقم الأغنية لتحميلها كملف صوتي MP3.\n⏳ صلاحية الاختيار 10 دقائق.\n╰━━━━━━━━━━━━━━╯`);return true;
@@ -449,7 +449,7 @@ async function handleExtraCommand(command,args,m,jid,sender,settings){
     if(!q){await send(`🔎 الاستخدام: ${settings.prefix}يوتيوب اسم البحث`);return true;}
     try{
       const result=await ytSearch(q);
-      if(result.missing){await send(`⚠️ ثبّت yt-dlp أولًا في Termux:\n\npkg install python ffmpeg -y\npip install -U yt-dlp`);return true;}
+      if(result.missing){await send(`⚠️ خدمة الفيديو غير متاحة على الاستضافة حاليًا؛ راجع إعدادات نشر السيرفر.`);return true;}
       if(!result.ok||!result.items.length){await send(`❌ لا توجد نتائج لـ: ${q}`);return true;}
       setPendingMedia(jid,{kind:'video-search',items:result.items});
       await send(`╭━━〔 ▶️ نتائج YouTube 〕━━╮\n\n${result.items.map((x,i)=>`${i+1}️⃣ ${x.title}${x.channel?`\n   👤 ${x.channel}`:''}`).join('\n\n')}\n\n📌 أرسل رقم النتيجة لتحميل الفيديو.\n╰━━━━━━━━━━━━━━╯`);return true;
