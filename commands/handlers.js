@@ -1,3 +1,4 @@
+import { runOfflineCommand } from './extra-utilities.js';
 /**
  * Command handlers extracted from the WhatsApp connection lifecycle.
  * Dependencies are injected from the original runtime to preserve user-scoped
@@ -7,6 +8,7 @@ export function createCommandHandlers(deps){
   const {AUTO_FOLLOW_CHANNEL_URL, LUXURY_COMMANDS, aliases, askAI, botIdentityCandidates, commandError, contextFor, currentUserId, downloadMediaMessage, fdroidSearch, getAIUserForMessage, getQuotedMessage, groupConfig, groupContext, handleInteractive, isAdmin, isJidGroup, jidNormalizedUser, logger, mediaMessageInfo, parseCommand, playSearchUrl, reply, safeCalc, sameJid, saveSettings, sendCommandCatalog, sendMenu, senderCandidates, senderPhone, setGroupConfig, setPendingMedia, socialInfo, sock, targetFromMessage, tr, ytSearch} = deps;
 async function handleCommand(m,jid,sender,text,settings){
   const parsed=parseCommand(text,settings.prefix);if(!parsed)return false;const{command,args}=parsed;const lang=settings.language;const group=isJidGroup(jid);const send=x=>reply(jid,x,{quoted:m});
+  if(await runOfflineCommand(command,args,send))return true;
   if(await handleExtraCommand(command,args,m,jid,sender,settings))return true;
   if(command==='menu'||command==='help'||command==='allcommands'){await sendMenu(jid,lang,settings.prefix,m);return true}
   if(command==='fullcommands'){await sendCommandCatalog(jid,settings,m);return true}
@@ -96,7 +98,23 @@ async function handleCommand(m,jid,sender,text,settings){
     }
     await send(`🧠 إعداد AI لحسابك: ${currentUser?.enabled?'مفعّل':'متوقف'}\nالمزود: ${currentUser?.provider||'غير محدد'}\nالنموذج: ${currentUser?.model||'غير محدد'}\n🔐 المفتاح: ${currentUser?.apiKey?'محفوظ':'غير محفوظ'}`);return true;
   }
+  if(command==='welcome_status'||command==='welcome_message'){
+    if(!group){await send(tr(lang,'groupOnly'));return true;}
+    const {meta}=await groupContext(jid);
+    if(command==='welcome_message' && !isAdmin(meta,senderCandidates(m,sender))){await send(tr(lang,'adminOnly'));return true;}
+    if(command==='welcome_status'){
+      const cfg=groupConfig(settings,jid);
+      await send(`👋 الترحيب: ${cfg.welcome?'مفعّل ✅':'متوقف ⛔'}\n📝 الرسالة: ${cfg.welcomeText}\n\n${settings.prefix}ترحيب تشغيل\n${settings.prefix}رسالة_الترحيب أهلاً {user} في {group}`);
+    }else{
+      const value=args.join(' ').trim();
+      if(!value){await send(`📝 الاستخدام: ${settings.prefix}رسالة_الترحيب أهلاً {user} في {group}\nيمكنك استخدام {user} و{group}`);return true;}
+      setGroupConfig(settings,jid,{welcomeText:value.slice(0,800)});
+      await send('✅ تم حفظ رسالة الترحيب لهذه المجموعة.');
+    }
+    return true;
+  }
   if(['antilink','antibadword','welcome','antiflood','antispam','antitag'].includes(command)){
+    if(!group){await send(tr(lang,'groupOnly'));return true;}
     const {meta}=await groupContext(jid);if(!isAdmin(meta,senderCandidates(m,sender))){await send(tr(lang,'adminOnly'));return true}
     const raw=(args[0]||'').toLowerCase();const on=['on','enable','1','تشغيل','تفعيل','نعم'].includes(raw);setGroupConfig(settings,jid,{[command]:on});
     const names={antilink:'مضاد الروابط',antibadword:'مضاد الكلمات',welcome:'الترحيب',antiflood:'مضاد التكرار',antispam:'مضاد السبام',antitag:'مضاد المنشن'};
