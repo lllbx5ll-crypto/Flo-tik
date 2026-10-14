@@ -64,6 +64,7 @@ Object.assign(aliases,{
 Object.assign(aliases,{
   'ذكاء_حسابي':'aiconfig','ai_account':'aiconfig','اعدادات_الذكاء':'aiconfig',
   'اللغة':'language','البادئة':'prefix',
+  'رسالة_الترحيب':'welcome_message','حالة_الترحيب':'welcome_status',
   'كامل_الأوامر':'fullcommands','كامل_الاوامر':'fullcommands','كل_الأوامر_الكاملة':'fullcommands','كل_الاوامر_الكاملة':'fullcommands',
   'اوامر_كاملة':'fullcommands','أوامر_كاملة':'fullcommands'
 });
@@ -94,6 +95,9 @@ LUXURY_COMMANDS.push(
  ['المساعدة السريعة',['الاوامر','اوامر','اوامر_البوت','أوامر_البوت','اوامر_المجموعة','اوامر_الحماية','اوامر_الترفيه','اوامر_الادوات']]
 );
 
-const luxuryCommandNames=new Set(LUXURY_COMMANDS.flatMap(([,items])=>items));
+// Local commands work offline without APIs.
+Object.assign(aliases,Object.fromEntries(['نصيحة','تحفيز','دعاء','سؤال','لغز','مثل','تهنئة','صباح','مساء','قرعة','عد_تنازلي','اختصار_نص','تاريخ_هجري','كلمة_عشوائية','اختبار_رياضيات','فاصل','تنسيق_اسم'].map(x=>[x,x])));
+LUXURY_COMMANDS.push(['إضافات فلوتيك المفيدة',['حالة_الترحيب','رسالة_الترحيب','نصيحة','تحفيز','دعاء','سؤال','لغز','مثل','تهنئة','صباح','مساء','قرعة','عد_تنازلي','اختصار_نص','تاريخ_هجري','كلمة_عشوائية','اختبار_رياضيات','فاصل','تنسيق_اسم']]);
 
+const luxuryCommandNames=new Set(LUXURY_COMMANDS.flatMap(([,items])=>items));
 export { aliases, LUXURY_COMMANDS, luxuryCommandNames };
