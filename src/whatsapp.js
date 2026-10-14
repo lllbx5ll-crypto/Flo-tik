@@ -234,27 +234,23 @@ function quickButtonPayload(rows){
   }));
 }
 async function sendQuickButtons(jid,rows,title,quoted){
-  const body=title||'اختر القسم الذي تريده:';
-  // A single-select native flow supports nine categories without exceeding quick-reply limits.
-  const button={name:'single_select',buttonParamsJson:JSON.stringify({
-    title:'📋 افتح قائمة الأقسام',sections:[{title:'أقسام فلو تيك',rows:rows.map(r=>({header:'FLOWTECH',title:r.title,description:'اضغط لفتح القسم',id:r.id}))}]
-  })};
+  // Use WhatsApp's native list-message envelope rather than viewOnce/nativeFlow.
+  // Clients may still suppress interactive UI; the numbered menu remains available.
+  const sections=[{title:'أقسام فلو تيك',rows:rows.map((r,i)=>({
+    title:r.title.slice(0,24),rowId:r.id,description:'اختر هذا القسم'
+  }))}];
   try{
-    const interactive=proto.Message.InteractiveMessage.fromObject({
-      header:{title:'FLOWTECH',hasMediaAttachment:false},body:{text:body},
-      footer:{text:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』'},
-      nativeFlowMessage:{buttons:[button],messageParamsJson:''}
-    });
-    const generated=generateWAMessageFromContent(jid,{viewOnceMessage:{message:{
-      messageContextInfo:{deviceListMetadata:{},deviceListMetadataVersion:2},interactiveMessage:interactive
-    }}},{quoted});
-    await sock.relayMessage(jid,generated.message,{messageId:generated.key.id});
+    await sock.sendMessage(jid,{
+      text:title||'اختر القسم',footer:'『˼فلو تيك˹ ❘❘ ˼𝙵𝙻𝙾𝚆𝚃𝙴𝙲𝙷˹』',
+      title:'FLOWTECH',buttonText:'📋 عرض الأقسام',sections
+    },{quoted});
     return true;
   }catch(e){
     emit({type:'menu_button_error',message:e?.message||String(e)});
     return false;
   }
 }
+
 function menuButtonRows(lang){
   const ar=lang==='ar';
   return menuRows(lang).map(r=>({id:r.id,title:`${r.header} ${r.title}`}));
@@ -461,7 +457,6 @@ async function saveQuotedRegularMediaToSelf(m,jid){
     if(info.type==='image')await sock.sendMessage(self,{image:buffer,caption:'📥 تم حفظ الصورة التي رددت عليها.'});
     else if(info.type==='video')await sock.sendMessage(self,{video:buffer,caption:'📥 تم حفظ الفيديو الذي رددت عليه.'});
     else await sock.sendMessage(self,{document:buffer,mimetype:info.content.mimetype||'application/octet-stream',fileName:info.content.fileName||'media',caption:'📥 تم حفظ الملف الذي رددت عليه.'});
-    await reply(jid,'📥 تم حفظ الوسائط المرسلة بشكل عادي في رسائلك الخاصة.');
     return true;
   }catch(e){emit({type:'media_save_error',message:e?.message||String(e)});return false;}
 }
@@ -560,7 +555,7 @@ async function downloadWithYtDlp(url,mode='audio'){
   if(mode==='audio')args.push('-x','--audio-format','mp3','--audio-quality','128K');
   else args.push('-f','bv*+ba/b','--merge-output-format','mp4');
   args.push(url);
-  try{await runProcess('yt-dlp',args,{timeout:240000});}catch(e){return {ok:false,error:/sign in to confirm|not a bot|cookies/i.test(e.message)?'يوتيوب طلب التحقق من الجلسة. يحتاج السيرفر إلى ملف Cookies صالح عبر YTDLP_COOKIES_FILE، ولا يمكن ضمان التحميل من كل فيديو.':e.message};}
+  try{await runProcess('yt-dlp',args,{timeout:240000});}catch(e){return {ok:false,error:/sign in to confirm|not a bot|cookies/i.test(e.message)?'تعذر تنزيل هذا المقطع لأن YouTube طلب التحقق من الجلسة. جرّب مقطعًا آخر أو اضبط جلسة تنزيل صالحة على الخادم.':e.message};}
   const files=fs.readdirSync(dir).filter(name=>name.startsWith(`${stamp}-`)).map(name=>path.join(dir,name));
   if(!files.length)return {ok:false,error:'لم يتم إنشاء الملف بعد التحميل.'};
   const file=files.sort((a,b)=>fs.statSync(b).size-fs.statSync(a).size)[0];
